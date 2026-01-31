@@ -1,0 +1,64 @@
+# dbt Project Configuration
+# Migration from Snowflake Dynamic Tables to dbt
+# Original implementation: sql/dynamic_tables.sql
+
+name: 'snowflake_ingestion_patterns'
+version: '1.0.0'
+config-version: 2
+
+# Project profile for Snowflake connection
+profile: 'snowflake_patterns'
+
+# Model paths
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+# Model configurations
+models:
+  snowflake_ingestion_patterns:
+    # Staging models - views for raw table access
+    staging:
+      +materialized: view
+      +schema: staging
+      
+    # Intermediate models - incremental tables with transformations
+    intermediate:
+      +materialized: incremental
+      +schema: intermediate
+      +on_schema_change: "append_new_columns"
+      
+    # Mart models - final enriched tables
+    mart:
+      +materialized: table
+      +schema: mart
+
+# Global variables matching original SQL implementation
+vars:
+  # Database and schema configuration (from USE statements in original SQL)
+  database: 'POC_DB'
+  schema: 'POC2_DYNAMIC'
+  warehouse: 'dynamic_wh'
+  
+  # Timezone setting (from ALTER SESSION SET TIMEZONE)
+  timezone: 'Europe/Warsaw'
+  
+  # Scheduling recommendations based on TARGET_LAG equivalents:
+  # - transactions: every 1 minute (time sensitive fraud data)
+  # - clients: every 5 minutes (balance between cost and freshness)
+  # - merchants: every 15 minutes (relatively static data)
+  # - mart models: every 1 minute (DOWNSTREAM - runs after upstream)
+
+# Dispatch configuration for cross-database compatibility
+dispatch:
+  - macro_namespace: dbt
+    search_order: ['snowflake_ingestion_patterns', 'dbt']

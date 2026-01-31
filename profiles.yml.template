@@ -1,0 +1,48 @@
+# dbt Profile Configuration Template
+# Copy this file to ~/.dbt/profiles.yml or keep in project root
+# This file is excluded from git via .gitignore for security
+
+snowflake_patterns:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: <YOUR_SNOWFLAKE_ACCOUNT>  # e.g., xy12345.us-east-1
+      user: <YOUR_USERNAME>
+      password: <YOUR_PASSWORD>
+      role: sysadmin
+      database: POC_DB
+      warehouse: dynamic_wh
+      schema: POC2_DYNAMIC
+      threads: 4
+      client_session_keep_alive: False
+      query_tag: dbt_snowflake_patterns
+      
+    prod:
+      type: snowflake
+      account: <YOUR_SNOWFLAKE_ACCOUNT>
+      user: <YOUR_USERNAME>
+      password: <YOUR_PASSWORD>
+      role: sysadmin
+      database: POC_DB
+      warehouse: dynamic_wh
+      schema: POC2_DYNAMIC
+      threads: 8
+      client_session_keep_alive: False
+      query_tag: dbt_snowflake_patterns_prod
+
+# Alternative: Using key-pair authentication (more secure)
+# snowflake_patterns:
+#   target: dev
+#   outputs:
+#     dev:
+#       type: snowflake
+#       account: <YOUR_SNOWFLAKE_ACCOUNT>
+#       user: <YOUR_USERNAME>
+#       role: sysadmin
+#       database: POC_DB
+#       warehouse: dynamic_wh
+#       schema: POC2_DYNAMIC
+#       private_key_path: /path/to/private_key.p8
+#       private_key_passphrase: <YOUR_PASSPHRASE>
+#       threads: 4

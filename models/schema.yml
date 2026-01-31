@@ -1,0 +1,300 @@
+version: 2
+
+# Source definitions for raw landing tables
+sources:
+  - name: poc2_dynamic
+    description: "Raw landing tables with CHANGE_TRACKING enabled for continuous data loading from S3"
+    database: POC_DB
+    schema: POC2_DYNAMIC
+    tables:
+      - name: raw_trans
+        description: "Raw transaction data loaded via pipe_trans from S3"
+        columns:
+          - name: trans_num_raw
+            description: "Raw transaction number (string)"
+          - name: trans_date_raw
+            description: "Raw transaction date (string, format: YYYY-MM-DD HH24:MI:SS)"
+          - name: card_num_raw
+            description: "Raw card number (string)"
+          - name: amount_raw
+            description: "Raw transaction amount (string)"
+          - name: merchant_raw
+            description: "Raw merchant identifier (string)"
+          - name: category_raw
+            description: "Raw transaction category (string)"
+          - name: is_fraud_raw
+            description: "Raw fraud indicator (string, boolean)"
+          - name: meta_filename
+            description: "Source filename from S3"
+          - name: meta_file_row_number
+            description: "Row number within the source file"
+          - name: meta_load_ts
+            description: "Timestamp when record was loaded into Snowflake"
+            
+      - name: raw_clients
+        description: "Raw client data loaded via pipe_client from S3"
+        columns:
+          - name: card_num_raw
+            description: "Raw card number (string)"
+          - name: first_name_raw
+            description: "Raw first name (string)"
+          - name: last_name_raw
+            description: "Raw last name (string)"
+          - name: gender_raw
+            description: "Raw gender (string)"
+          - name: date_birth_raw
+            description: "Raw date of birth (string)"
+          - name: job_raw
+            description: "Raw job title (string)"
+          - name: street_raw
+            description: "Raw street address (string)"
+          - name: city_raw
+            description: "Raw city (string)"
+          - name: state_raw
+            description: "Raw state (string)"
+          - name: meta_filename
+            description: "Source filename from S3"
+          - name: meta_file_row_number
+            description: "Row number within the source file"
+          - name: meta_load_ts
+            description: "Timestamp when record was loaded into Snowflake"
+            
+      - name: raw_merch
+        description: "Raw merchant data loaded via pipe_merch from S3"
+        columns:
+          - name: merchant_raw
+            description: "Raw merchant identifier (string)"
+          - name: merchant_lat_raw
+            description: "Raw merchant latitude (string)"
+          - name: merchant_long_raw
+            description: "Raw merchant longitude (string)"
+          - name: meta_filename
+            description: "Source filename from S3"
+          - name: meta_file_row_number
+            description: "Row number within the source file"
+          - name: meta_load_ts
+            description: "Timestamp when record was loaded into Snowflake"
+
+# Staging models
+models:
+  - name: stg_raw_transactions
+    description: "Staging view for raw transaction data - passthrough with no transformations"
+    columns:
+      - name: trans_num_raw
+        description: "Raw transaction number"
+      - name: trans_date_raw
+        description: "Raw transaction date"
+      - name: card_num_raw
+        description: "Raw card number"
+      - name: amount_raw
+        description: "Raw transaction amount"
+      - name: merchant_raw
+        description: "Raw merchant identifier"
+      - name: category_raw
+        description: "Raw transaction category"
+      - name: is_fraud_raw
+        description: "Raw fraud indicator"
+      - name: meta_load_ts
+        description: "Load timestamp for lineage tracking"
+        
+  - name: stg_raw_clients
+    description: "Staging view for raw client data - passthrough with no transformations"
+    columns:
+      - name: card_num_raw
+        description: "Raw card number"
+      - name: first_name_raw
+        description: "Raw first name"
+      - name: last_name_raw
+        description: "Raw last name"
+      - name: gender_raw
+        description: "Raw gender"
+      - name: date_birth_raw
+        description: "Raw date of birth"
+      - name: job_raw
+        description: "Raw job title"
+      - name: city_raw
+        description: "Raw city"
+      - name: state_raw
+        description: "Raw state"
+      - name: meta_load_ts
+        description: "Load timestamp for lineage tracking"
+        
+  - name: stg_raw_merchants
+    description: "Staging view for raw merchant data - passthrough with no transformations"
+    columns:
+      - name: merchant_raw
+        description: "Raw merchant identifier"
+      - name: merchant_lat_raw
+        description: "Raw merchant latitude"
+      - name: merchant_long_raw
+        description: "Raw merchant longitude"
+      - name: meta_load_ts
+        description: "Load timestamp for lineage tracking"
+
+  # Intermediate models
+  - name: int_transactions_cleaned
+    description: |
+      Cleaned and validated transaction data with type conversions.
+      Original: dt_transactions with TARGET_LAG = '1 minute'
+      Schedule: Every 1 minute (time-sensitive fraud data)
+    columns:
+      - name: trans_num
+        description: "Transaction number (unique identifier)"
+        tests:
+          - unique
+          - not_null
+      - name: trans_ts
+        description: "Transaction timestamp (converted from string)"
+      - name: card_num
+        description: "Card number"
+        tests:
+          - not_null
+      - name: amount
+        description: "Transaction amount (DECIMAL(18,2))"
+      - name: merchant
+        description: "Merchant identifier"
+      - name: category
+        description: "Transaction category"
+      - name: is_fraud
+        description: "Fraud indicator (boolean)"
+      - name: meta_load_ts
+        description: "Load timestamp for lineage tracking"
+        tests:
+          - not_null
+      - name: validation_status
+        description: "Data quality validation status (VALID, INVALID_DATE, INVALID_AMOUNT, INVALID_IS_FRAUD)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['VALID', 'INVALID_DATE', 'INVALID_AMOUNT', 'INVALID_IS_FRAUD']
+              
+  - name: int_merchants_scd1
+    description: |
+      Merchant data with SCD Type 1 logic (latest record only).
+      Original: dt_merchants with TARGET_LAG = '15 minutes'
+      Schedule: Every 15 minutes (relatively static data)
+    columns:
+      - name: merchant
+        description: "Merchant identifier (unique, SCD Type 1)"
+        tests:
+          - unique
+          - not_null
+      - name: merchant_lat
+        description: "Merchant latitude (DECIMAL(11,8))"
+      - name: merchant_long
+        description: "Merchant longitude (DECIMAL(11,8))"
+      - name: meta_load_ts
+        description: "Load timestamp of the latest record"
+        
+  - name: int_clients_scd2
+    description: |
+      Client data with SCD Type 2 logic (full historical tracking).
+      Original: dt_clients with TARGET_LAG = '5 minutes'
+      Schedule: Every 5 minutes (balance between cost and freshness)
+    columns:
+      - name: card_num
+        description: "Card number (not unique due to SCD Type 2)"
+        tests:
+          - not_null
+      - name: first_name
+        description: "First name"
+      - name: last_name
+        description: "Last name"
+      - name: gender
+        description: "Gender"
+      - name: date_birth
+        description: "Date of birth"
+      - name: job
+        description: "Job title"
+      - name: street
+        description: "Street address"
+      - name: city
+        description: "City"
+      - name: state
+        description: "State"
+      - name: valid_from
+        description: "Start of validity period (inclusive)"
+        tests:
+          - not_null
+      - name: valid_to
+        description: "End of validity period (exclusive, NULL for current records)"
+      - name: is_current
+        description: "Flag indicating current record (TRUE) or historical (FALSE)"
+        tests:
+          - not_null
+      - name: meta_load_ts
+        description: "Original load timestamp"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - card_num
+            - valid_from
+
+  # Mart models
+  - name: dt_invalid_trans
+    description: |
+      Invalid transactions captured for data quality analysis.
+      Original: dt_invalid_trans with TARGET_LAG = 'DOWNSTREAM'
+      Schedule: Every 1 minute (runs after upstream models)
+    columns:
+      - name: trans_num
+        description: "Transaction number"
+        tests:
+          - unique
+          - not_null
+      - name: validation_status
+        description: "Type of validation failure"
+        tests:
+          - not_null
+      - name: meta_load_ts
+        description: "Load timestamp"
+        
+  - name: dt_fraud_full
+    description: |
+      Enriched fraud dataset with point-in-time joins.
+      Original: dt_fraud_full with TARGET_LAG = 'DOWNSTREAM'
+      Schedule: Every 1 minute (runs after upstream models)
+      
+      Contains only validated transactions enriched with:
+      - Historical client data (point-in-time SCD Type 2)
+      - Current merchant location data (SCD Type 1)
+    columns:
+      - name: trans_num
+        description: "Transaction number"
+        tests:
+          - unique
+          - not_null
+      - name: trans_ts
+        description: "Transaction timestamp"
+        tests:
+          - not_null
+      - name: card_num
+        description: "Card number"
+        tests:
+          - not_null
+      - name: amount
+        description: "Transaction amount"
+      - name: category
+        description: "Transaction category"
+      - name: is_fraud
+        description: "Fraud indicator"
+      - name: first_name
+        description: "Client first name (at time of transaction)"
+      - name: last_name
+        description: "Client last name (at time of transaction)"
+      - name: gender
+        description: "Client gender (at time of transaction)"
+      - name: job
+        description: "Client job (at time of transaction)"
+      - name: client_city
+        description: "Client city (at time of transaction)"
+      - name: client_state
+        description: "Client state (at time of transaction)"
+      - name: merchant
+        description: "Merchant identifier"
+      - name: merchant_lat
+        description: "Merchant latitude"
+      - name: merchant_long
+        description: "Merchant longitude"
+      - name: meta_load_ts
+        description: "Transaction load timestamp (lineage)"

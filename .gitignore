@@ -49,6 +49,7 @@ profiles.yml
 *.pem
 *.p8
 *.key
+s3_int.sql
 
 # SQL temp files
 *.sql~
@@ -92,7 +93,16 @@ temp/
 *.json
 data/csv/
 data/notes/
-
-# 
-s3_int.sql
 sql/tests/
+
+# terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfvars.json
+*.tfplan
+crash.log
+override.tf
+override.tf.json

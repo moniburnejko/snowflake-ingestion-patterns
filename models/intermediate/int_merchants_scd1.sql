@@ -1,7 +1,6 @@
 {{
   config(
-    materialized='incremental',
-    unique_key='merchant',
+    materialized='table',
     tags=['intermediate', 'merchants', 'scd_type_1'],
     cluster_by=['merchant']
   )
@@ -27,39 +26,27 @@
  *   2. meta_file_row_number (tiebreaker - last row in file)
  * - Always have current data for each merchant
  * - No historical tracking (only location data, not sensitive to changes)
+ * 
+ * Materialization Note:
+ * - Uses table materialization (not incremental) for simplicity
+ * - Full refresh on each run ensures clean SCD Type 1 state
+ * - Merchant table is small, so full refresh is efficient
  */
 
-WITH latest_merchants AS (
-    SELECT
-        merchant_raw AS merchant,
-        TRY_TO_DECIMAL(merchant_lat_raw, 11, 8) AS merchant_lat,
-        TRY_TO_DECIMAL(merchant_long_raw, 11, 8) AS merchant_long,
-        meta_load_ts
+SELECT
+    merchant_raw AS merchant,
+    TRY_TO_DECIMAL(merchant_lat_raw, 11, 8) AS merchant_lat,
+    TRY_TO_DECIMAL(merchant_long_raw, 11, 8) AS merchant_long,
+    meta_load_ts
 
-    FROM {{ ref('stg_raw_merchants') }}
-    
-    {% if is_incremental() %}
-        -- Only process new records since last run
-        WHERE meta_load_ts > (SELECT MAX(meta_load_ts) FROM {{ this }})
-    {% endif %}
-    
-    -- Deduplication - SCD Type 1
-    -- Select the newest record for each merchant_raw and load time
-    -- Filter to keep only that record (qualify row_number = 1)
-    -- This way we always have the latest data for each merchant
-    -- (Due to the nature of the data (only location), we don't use SCD Type 2)
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY merchant_raw 
-        ORDER BY meta_load_ts DESC, meta_file_row_number DESC
-    ) = 1
-)
+FROM {{ ref('stg_raw_merchants') }}
 
-SELECT * FROM latest_merchants
-
-{% if is_incremental() %}
-    -- In incremental mode, merge new data with existing
-    UNION ALL
-    
-    SELECT * FROM {{ this }}
-    WHERE merchant NOT IN (SELECT merchant FROM latest_merchants)
-{% endif %}
+-- Deduplication - SCD Type 1
+-- Select the newest record for each merchant_raw and load time
+-- Filter to keep only that record (qualify row_number = 1)
+-- This way we always have the latest data for each merchant
+-- (Due to the nature of the data (only location), we don't use SCD Type 2)
+QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY merchant_raw 
+    ORDER BY meta_load_ts DESC, meta_file_row_number DESC
+) = 1

@@ -100,6 +100,7 @@ sql/tests/
 .terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
+*.tfstate.*
 *.tfvars
 *.tfvars.json
 *.tfplan

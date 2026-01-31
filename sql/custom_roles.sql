@@ -1,10 +1,9 @@
 --- CREATE CUSTOM ROLES AND GRANT NECESSARY PRIVILEGES ---
--- TODO: zautomatyzowac terraformem tworzenie rol i granty
 
 USE ROLE securityadmin;
 
 -- PIPE ADMIN --
--- stage, file formats, pipes, loading to landing table
+-- loading data (stages, file formats, pipes, insert into tables)
 CREATE ROLE IF NOT EXISTS pipeadmin;
 
 GRANT USAGE ON WAREHOUSE poc_wh TO ROLE pipeadmin;
@@ -12,6 +11,11 @@ GRANT USAGE ON WAREHOUSE dynamic_wh TO ROLE pipeadmin;
 GRANT USAGE ON DATABASE poc_db TO ROLE pipeadmin;
 GRANT USAGE ON SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
 GRANT USAGE ON SCHEMA poc_db.poc2_dynamic TO ROLE pipeadmin;
+
+GRANT CREATE PIPE ON SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
+GRANT CREATE PIPE ON SCHEMA poc_db.poc2_dynamic TO ROLE pipeadmin;
+
+GRANT CREATE STREAM ON SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
 
 GRANT USAGE ON ALL STAGES IN SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;     
 GRANT USAGE ON FUTURE STAGES IN SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;   
@@ -27,10 +31,6 @@ GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA poc_db.poc2_schema TO ROLE pipeadmi
 GRANT INSERT, SELECT ON FUTURE TABLES IN SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
 GRANT INSERT, SELECT ON ALL TABLES IN SCHEMA poc_db.poc2_dynamic TO ROLE pipeadmin;
 GRANT INSERT, SELECT ON FUTURE TABLES IN SCHEMA poc_db.poc2_dynamic TO ROLE pipeadmin;
-
-GRANT CREATE PIPE ON SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
-GRANT CREATE STREAM ON SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;
-GRANT CREATE PIPE ON SCHEMA poc_db.poc2_dynamic TO ROLE pipeadmin;
 
 -- to see history and status of pipes
 GRANT MONITOR ON FUTURE PIPES IN SCHEMA poc_db.poc2_schema TO ROLE pipeadmin;

@@ -32,6 +32,7 @@ wheels/
 pip-log.txt
 pip-delete-this-directory.txt
 
+
 # Virtual environments
 .venv
 .conda
@@ -41,6 +42,7 @@ pip-delete-this-directory.txt
 .vscode/
 *.code-workspace
 .history/
+.ipynb_checkpoints
 
 # Snowflake credentials and connections
 profiles.yml
@@ -93,6 +95,7 @@ temp/
 *.json
 data/csv/
 data/notes/
+sql/local/
 sql/tests/
 
 # terraform

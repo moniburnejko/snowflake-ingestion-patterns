@@ -25,7 +25,7 @@ CREATE STAGE IF NOT EXISTS poc2_stage
   STORAGE_INTEGRATION = s3_int
   FILE_FORMAT = ff_poc2_csv;
 
-LIST @poc2_stage;
+//LIST @poc2_stage;
 
 
 --- LANDING TABLE ---
@@ -45,7 +45,7 @@ CHANGE_TRACKING = TRUE;
 
 --- SNOWPIPE (AUTO INGEST) ---
 USE ROLE pipeadmin;
-CREATE or replace pipe poc2_pipe
+CREATE PIPE IF NOT EXISTS poc2_pipe
   AUTO_INGEST = TRUE
 AS
   COPY INTO poc2_landing (
@@ -68,12 +68,12 @@ AS
   );
 
 -- check definition and status
-SHOW PIPES;
-DESC PIPE poc2_pipe;
-SELECT SYSTEM$PIPE_STATUS('POC2_PIPE');
+//SHOW PIPES;
+//DESC PIPE poc2_pipe;
+//SELECT SYSTEM$PIPE_STATUS('POC2_PIPE');
 
 -- refresh pipe if files already existed in s3 prior to pipe creation
-ALTER PIPE poc2_pipe REFRESH;
+//ALTER PIPE poc2_pipe REFRESH;
 
 
 --- STREAM ON LANDING TABLE ---
@@ -81,7 +81,8 @@ CREATE STREAM IF NOT EXISTS poc2_landing_stream
   ON TABLE poc2_landing
   APPEND_ONLY = TRUE;
 
-SHOW STREAMS;
+-- check definition and status
+//SHOW STREAMS;
 
 
 --- CONFORMED TABLE ---
@@ -142,7 +143,7 @@ WHEN NOT MATCHED THEN
 
 
 -- when created, tasks are in SUSPENDED state, resume them to enable monitoring
-ALTER TASK poc2_serverless_task RESUME;
-ALTER TASK poc2_serverless_task SUSPEND;
-SHOW TASKS;
-EXECUTE TASK poc2_serverless_task;
+//ALTER TASK poc2_serverless_task RESUME;
+//ALTER TASK poc2_serverless_task SUSPEND;
+//SHOW TASKS;
+//EXECUTE TASK poc2_serverless_task;

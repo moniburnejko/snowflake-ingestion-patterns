@@ -1,9 +1,8 @@
 # dbt
 target/
 dbt_packages/
-logs/
+dbt_internal_packages/
 dbt_modules/
-*.log
 
 # Python (dbt dependencies)
 venv/
@@ -52,8 +51,8 @@ profiles.yml
 *.key
 
 # SQL 
-sql/local/
-sql/archive/
+*/local/*
+*/archive/*
 admin_setup.sql
 # temp files
 *.sql~
@@ -95,8 +94,7 @@ temp/
 *.csv
 *.parquet
 *.json
-data/csv/
-data/notes/
+data/
 
 # terraform
 .terraform/

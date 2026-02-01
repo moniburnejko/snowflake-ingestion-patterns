@@ -20,40 +20,41 @@ provider "aws" {
 
 # default provider = securityadmin
 provider "snowflake" {
+    role              = "SECURITYADMIN"
     organization_name = var.snowflake_organization
     account_name      = var.snowflake_account
     user              = var.snowflake_user
     token             = var.snowflake_pat
     authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
-    role              = "SECURITYADMIN"
 }
 
 provider "snowflake" {
+    role              = "ACCOUNTADMIN"
     alias             = "account"
     organization_name = var.snowflake_organization
     account_name      = var.snowflake_account
     user              = var.snowflake_user
     token             = var.snowflake_pat
     authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
-    role              = "ACCOUNTADMIN"
+}
+
+provider "snowflake" {
+    role                     = "SYSADMIN"
+    alias                    = "sys"
+    organization_name        = var.snowflake_organization
+    account_name             = var.snowflake_account
+    user                     = var.snowflake_user
+    token                    = var.snowflake_pat
+    authenticator            = "PROGRAMMATIC_ACCESS_TOKEN"
+    preview_features_enabled = ["snowflake_alert_resource"]
     }
 
 provider "snowflake" {
-    alias            = "sys"
-    organization_name = var.snowflake_organization
-    account_name      = var.snowflake_account
-    user              = var.snowflake_user
-    token             = var.snowflake_pat
-    authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
-    role              = "SYSADMIN"
-    }
-
-provider "snowflake" {
-    alias            = "security"
-    organization_name = var.snowflake_organization
-    account_name      = var.snowflake_account
-    user              = var.snowflake_user
-    token             = var.snowflake_pat
-    authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
     role              = "SECURITYADMIN"
+    alias             = "security"
+    organization_name = var.snowflake_organization
+    account_name      = var.snowflake_account
+    user              = var.snowflake_user
+    token             = var.snowflake_pat
+    authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
 }

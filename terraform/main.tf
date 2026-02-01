@@ -37,6 +37,11 @@ locals {
     PIPES          = ["MONITOR"]
   }
 
+  # ALERTADMIN OBJECT PRIVILEGES
+  alertadmin_objects = {
+    ALERTS = ["MONITOR", "OPERATE"]
+  }
+
   # TASKADMIN OBJECT PRIVILEGES (object type -> list of privileges)
   # objects on ALL schemas (general)
   taskadmin_general_objects = {
@@ -135,6 +140,38 @@ resource "snowflake_grant_privileges_to_account_role" "pipeadmin_objects_all" {
   }
 }
 
+# ALERTADMIN OBJECT GRANTS (future and all)
+
+resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_future" {
+  for_each = { 
+    for pair in setproduct(var.schemas, keys(local.alertadmin_objects)) : 
+    "${pair[0]}_${pair[1]}" => { schema = pair[0], type = pair[1] } 
+  }
+  account_role_name = snowflake_account_role.roles["ALERTADMIN"].name
+  privileges        = local.alertadmin_objects[each.value.type]
+  on_schema_object {
+    future {
+      object_type_plural = each.value.type
+      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+    }
+  }
+}
+
+resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_all" {
+  for_each = { 
+    for pair in setproduct(var.schemas, keys(local.alertadmin_objects)) : 
+    "${pair[0]}_${pair[1]}" => { schema = pair[0], type = pair[1] } 
+  }
+  account_role_name = snowflake_account_role.roles["ALERTADMIN"].name
+  privileges        = local.alertadmin_objects[each.value.type]
+  on_schema_object {
+    all {
+      object_type_plural = each.value.type
+      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+    }
+  }
+}
+
 
 # TASKADMIN GRANTS
 
@@ -145,7 +182,7 @@ resource "snowflake_grant_privileges_to_account_role" "taskadmin_account_grants"
   provider   = snowflake.account
 }
 
-# helper resource for taskadmin object grants (RW, RO, General)
+# helper resource for taskadmin object grants (RW, RO, general)
 # create separate resources for future and all grants
 
 resource "snowflake_grant_privileges_to_account_role" "taskadmin_objects_future" {

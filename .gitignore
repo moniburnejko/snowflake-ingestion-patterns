@@ -32,7 +32,6 @@ wheels/
 pip-log.txt
 pip-delete-this-directory.txt
 
-
 # Virtual environments
 .venv
 .conda
@@ -51,9 +50,12 @@ profiles.yml
 *.pem
 *.p8
 *.key
-s3_int.sql
 
-# SQL temp files
+# SQL 
+sql/local/
+sql/archive/
+admin_setup.sql
+# temp files
 *.sql~
 *.swp
 *.swo
@@ -95,8 +97,6 @@ temp/
 *.json
 data/csv/
 data/notes/
-sql/local/
-sql/tests/
 
 # terraform
 .terraform/

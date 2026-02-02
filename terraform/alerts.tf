@@ -22,7 +22,7 @@ resource "snowflake_alert" "snowpipe_alert" {
         AND SNOWFLAKE.ALERT.SCHEDULED_TIME())
   EOT
 
-  action = <<-EOT
+  action  = <<-EOT
     CALL SYSTEM$SEND_EMAIL(
       'poc2_email_int',
       'Email Alert: Snowpipe Errors',
@@ -33,7 +33,7 @@ resource "snowflake_alert" "snowpipe_alert" {
 }
 
 resource "snowflake_alert" "task_alert" {
-  provider = snowflake.sys
+  provider  = snowflake.sys
   name      = "task_error_alert"
   warehouse = var.warehouses[0]
   database  = var.database

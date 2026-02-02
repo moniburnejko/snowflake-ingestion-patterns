@@ -40,18 +40,6 @@ variable "schemas" {
   default = ["POC2_SCHEMA", "POC2_DYNAMIC"]
 }
 
-variable "schemas_rw" {
-  type    = list(string)
-  description = "schemas where TASKADMIN has full privileges (read and write)"
-  default = ["POC2_SCHEMA"]
-}
-
-variable "schemas_ro" {
-  type    = list(string)
-  description = "schemas where TASKADMIN has read-only privileges"
-  default = ["POC2_DYNAMIC"]
-}
-
 variable "custom_role" {
   type    = list(string)
   default = ["PIPEADMIN", "TASKADMIN", "ALERTADMIN"]

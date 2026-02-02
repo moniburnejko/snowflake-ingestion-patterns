@@ -1,0 +1,39 @@
+sources:
+  - name: raw
+    database: POC_DB
+    schema: POC2_DYNAMIC
+    tables:
+      - name: raw_trans
+        columns:
+          - name: trans_num_raw
+          - name: trans_date_raw
+          - name: card_num_raw
+          - name: amount_raw
+          - name: merchant_raw
+          - name: category_raw
+          - name: is_fraud_raw
+          - name: meta_filename
+          - name: meta_file_row_number
+          - name: meta_load_ts
+      - name: raw_clients
+        columns:
+          - name: card_num_raw
+          - name: first_name_raw
+          - name: last_name_raw
+          - name: gender_raw
+          - name: date_birth_raw
+          - name: job_raw
+          - name: street_raw
+          - name: city_raw
+          - name: state_raw
+          - name: meta_filename
+          - name: meta_file_row_number
+          - name: meta_load_ts
+      - name: raw_merch
+        columns:
+          - name: merchant_raw
+          - name: merchant_lat_raw
+          - name: merchant_long_raw
+          - name: meta_filename
+          - name: meta_file_row_number
+          - name: meta_load_ts

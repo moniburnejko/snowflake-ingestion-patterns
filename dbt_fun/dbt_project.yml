@@ -1,0 +1,25 @@
+name: snowflake_ingestion_patterns
+
+profile: dbt_fun
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  snowflake_ingestion_patterns:
+    staging:
+      +materialized: view
+      +tags: ["staging"]
+    intermediate:
+      +materialized: view
+      +tags: ["intermediate"]
+    marts:
+      +materialized: table
+      +tags: ["marts"]
+
+snapshots:
+  snowflake_ingestion_patterns:
+    +tags: ["snapshots"]

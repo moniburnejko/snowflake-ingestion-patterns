@@ -27,7 +27,7 @@ variable "snowflake_pat" {
 
 variable "warehouses" {
   type    = list(string)
-  default = ["POC_WH", "DYNAMIC_WH"]
+  default = ["POC_WH", "DYNAMIC_WH", "DBT_WH"]
 }
 
 variable "database" {
@@ -37,10 +37,10 @@ variable "database" {
 
 variable "schemas" {
   type    = list(string)
-  default = ["POC2_SCHEMA", "POC2_DYNAMIC"]
+  default = ["POC2_SCHEMA", "POC2_DYNAMIC", "POC2_DBT"]
 }
 
 variable "custom_role" {
   type    = list(string)
-  default = ["PIPEADMIN", "TASKADMIN", "ALERTADMIN"]
+  default = ["PIPEADMIN", "TASKADMIN", "ALERTADMIN", "DBTADMIN"]
 }

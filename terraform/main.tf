@@ -1,5 +1,5 @@
 # RBAC
-# TODO: try modules for better reusability!!
+# TODO: try modules for roles and grants!!
 
 # CREATE CUSTOM ROLES 
 # create all roles defined in variable custom_role
@@ -27,30 +27,48 @@ locals {
     PIPEADMIN  = ["CREATE PIPE", "CREATE STREAM"]
     TASKADMIN  = ["CREATE TASK"]
     ALERTADMIN = ["CREATE ALERT"]
+    DBTADMIN   = [
+      "CREATE TABLE",
+      "CREATE VIEW",
+      "CREATE MATERIALIZED VIEW",
+      "CREATE SEQUENCE",
+      "CREATE TEMPORARY TABLE"
+    ]
   }
 
   # PIPEADMIN OBJECT PRIVILEGES (object type -> list of privileges)
   pipeadmin_objects = {
-    STAGES         = ["USAGE"]
-    "FILE FORMATS" = ["USAGE"]
-    TABLES         = ["INSERT", "SELECT"]
-    PIPES          = ["MONITOR", "OPERATE"]
+    STAGES          = ["USAGE"]
+    "FILE FORMATS"  = ["USAGE"]
+    TABLES          = ["INSERT", "SELECT"]
+    PIPES           = ["MONITOR", "OPERATE"]
   }
 
   # ALERTADMIN OBJECT PRIVILEGES
   alertadmin_objects = {
-    ALERTS = ["MONITOR", "OPERATE"]
+    ALERTS           = ["MONITOR", "OPERATE"]
   }
 
   # TASKADMIN OBJECT PRIVILEGES
-  taskadmin_objects = {
+  taskadmin_objects  = {
     TABLES           = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"]
     STREAMS          = ["SELECT"]
     TASKS            = ["MONITOR"]
     "DYNAMIC TABLES" = ["SELECT", "OPERATE"]
   }
-}
 
+  # DBTADMIN OBJECT PRIVILEGES
+  dbtadmin_objects = {
+    TABLES               = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES"]
+    VIEWS                = ["SELECT"]
+    "MATERIALIZED VIEWS" = ["SELECT"]
+    SEQUENCES            = ["USAGE"]
+    STAGES               = ["USAGE"]
+    "FILE FORMATS"       = ["USAGE"]
+    FUNCTIONS            = ["USAGE"]
+    PROCEDURES           = ["USAGE"]
+  }
+}
 
 # COMMON GRANTS (USAGE)
 
@@ -70,6 +88,16 @@ resource "snowflake_grant_privileges_to_account_role" "database_usage" {
   for_each          = toset(var.custom_role)
   account_role_name = snowflake_account_role.roles[each.value].name
   privileges        = ["USAGE"]
+  on_account_object {
+    object_type = "DATABASE"
+    object_name = var.database
+  }
+}
+
+# DATABASE CREATE SCHEMA (DBTADMIN)
+resource "snowflake_grant_privileges_to_account_role" "dbtadmin_database_create_schema" {
+  account_role_name = snowflake_account_role.roles["DBTADMIN"].name
+  privileges        = ["CREATE SCHEMA"]
   on_account_object {
     object_type = "DATABASE"
     object_name = var.database
@@ -99,9 +127,7 @@ resource "snowflake_grant_privileges_to_account_role" "schema_creation" {
   }
 }
 
-
 # PIPEADMIN OBJECT GRANTS
-
 resource "snowflake_grant_privileges_to_account_role" "pipeadmin_objects_future" {
   for_each = {
     for pair in setproduct(var.schemas, keys(local.pipeadmin_objects)) :
@@ -133,7 +159,6 @@ resource "snowflake_grant_privileges_to_account_role" "pipeadmin_objects_all" {
 }
 
 # ALERTADMIN OBJECT GRANTS (future and all)
-
 resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_future" {
   for_each = {
     for pair in setproduct(var.schemas, keys(local.alertadmin_objects)) :
@@ -164,18 +189,13 @@ resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_all" {
   }
 }
 
-
 # TASKADMIN GRANTS
-
 resource "snowflake_grant_privileges_to_account_role" "taskadmin_account_grants" {
   account_role_name = snowflake_account_role.roles["TASKADMIN"].name
   privileges        = ["EXECUTE TASK", "EXECUTE MANAGED TASK"]
   on_account        = true
   provider          = snowflake.account
 }
-
-# helper resource for taskadmin object grants
-# create separate resources for future and all grants
 
 resource "snowflake_grant_privileges_to_account_role" "taskadmin_objects_future" {
   for_each = {
@@ -207,9 +227,38 @@ resource "snowflake_grant_privileges_to_account_role" "taskadmin_objects_all" {
   }
 }
 
+# DBTADMIN GRANTS (object privileges on all/future objects)
+resource "snowflake_grant_privileges_to_account_role" "dbtadmin_objects_future" {
+  for_each = {
+    for pair in setproduct(var.schemas, keys(local.dbtadmin_objects)) :
+    "${pair[0]}_${pair[1]}" => { schema = pair[0], type = pair[1] }
+  }
+  account_role_name = snowflake_account_role.roles["DBTADMIN"].name
+  privileges        = local.dbtadmin_objects[each.value.type]
+  on_schema_object {
+    future {
+      object_type_plural = each.value.type
+      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+    }
+  }
+}
+
+resource "snowflake_grant_privileges_to_account_role" "dbtadmin_objects_all" {
+  for_each = {
+    for pair in setproduct(var.schemas, keys(local.dbtadmin_objects)) :
+    "${pair[0]}_${pair[1]}" => { schema = pair[0], type = pair[1] }
+  }
+  account_role_name = snowflake_account_role.roles["DBTADMIN"].name
+  privileges        = local.dbtadmin_objects[each.value.type]
+  on_schema_object {
+    all {
+      object_type_plural = each.value.type
+      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+    }
+  }
+}
 
 # ALERTADMIN GRANTS
-
 resource "snowflake_grant_privileges_to_account_role" "alertadmin_account_grants" {
   account_role_name = snowflake_account_role.roles["ALERTADMIN"].name
   privileges        = ["EXECUTE ALERT", "EXECUTE MANAGED ALERT"]

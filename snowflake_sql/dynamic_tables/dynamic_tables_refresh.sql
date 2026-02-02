@@ -235,9 +235,9 @@ FROM raw_trans;
 
 
 -- DYNAMIC TABLE MERCHANTS
--- cleaning and SCD TYPE 1 logic implementation
+-- cleaning and SCD TYPE 1 logic
 CREATE OR REPLACE DYNAMIC TABLE dt_merchants
-  TARGET_LAG = '5 minutes'
+  TARGET_LAG = '1 minute'
   WAREHOUSE = dynamic_wh
 AS
 SELECT
@@ -245,57 +245,52 @@ SELECT
   TRY_TO_DECIMAL(merchant_lat_raw, 11, 8) AS merchant_lat,
   TRY_TO_DECIMAL(merchant_long_raw, 11, 8) AS merchant_long,
   meta_load_ts
-
 FROM raw_merch
 -- deduplicate based on latest load timestamp and file row number (scd type 1)
 QUALIFY ROW_NUMBER() OVER (PARTITION BY merchant_raw ORDER BY meta_load_ts DESC, meta_file_row_number DESC) = 1;
 
 
 
--- DYNAMIC TABLE CLIENTS
--- cleaning and SCD TYPE 2 logic implementation
-CREATE OR REPLACE DYNAMIC TABLE dt_clients
-  TARGET_LAG = '5 minutes'
+--- DYNAMIC TABLES CLIENTS
+-- DT_CLIENT_DEDUPED - deduplication based on load timestamp and file row number
+CREATE OR REPLACE DYNAMIC TABLE dt_clients_deduped
+  TARGET_LAG = '1 minute'
   WAREHOUSE = dynamic_wh
 AS
-WITH deduped_clients AS (
-  SELECT
-    card_num_raw AS card_num,
-    first_name_raw AS first_name,
-    last_name_raw AS last_name,
-    gender_raw AS gender,
-    TRY_TO_DATE(date_birth_raw) AS date_birth,
-    job_raw AS job,
-    street_raw AS street,
-    city_raw AS city,
-    state_raw AS state,
-
+SELECT
+  card_num_raw AS card_num,
+  first_name_raw AS first_name,
+  last_name_raw AS last_name,
+  gender_raw AS gender,
+  TRY_TO_DATE(date_birth_raw, 'DD-MM-YYYY') AS date_birth,
+  job_raw AS job,
+  street_raw AS street,
+  city_raw AS city,
+  state_raw AS state,
   -- valid_from = time when this record was loaded
-    meta_load_ts AS valid_from,
-    meta_load_ts -- i left meta_load_ts for next CTE usage and lineage
-  FROM raw_clients
+  meta_load_ts AS valid_from,
+  meta_load_ts -- i left meta_load_ts for lineage
+FROM raw_clients
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY card_num_raw, meta_load_ts ORDER BY meta_file_row_number DESC) = 1;
 
-  -- deduplicate based on card_num and load timestamp (to handle multiple loads in same timestamp)
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY card_num_raw, meta_load_ts ORDER BY meta_file_row_number DESC) = 1
-),
-
-scd_clients AS (
+-- DT_CLIENTS_SCD2 - SCD TYPE 2 implementation
+CREATE OR REPLACE DYNAMIC TABLE dt_clients_scd2
+  TARGET_LAG = 'DOWNSTREAM'
+  WAREHOUSE = dynamic_wh
+AS
   SELECT
     *,
     -- scd type 2 - valid_to = time when next record for same card_num was loaded
     -- we need deduplication in case of multiple records for same card_num and same valid_from (load timestamp)
     LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) AS valid_to,
-
     -- is_current flag for easier filtering of current records
     CASE WHEN LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) IS NULL THEN TRUE 
       ELSE FALSE 
     END AS is_current
-
-  FROM deduped_clients
-)
-SELECT * FROM scd_clients;
+  FROM dt_clients_deduped;
 
 
 
@@ -318,12 +313,9 @@ SELECT
 FROM dt_transactions
 WHERE validation_status != 'VALID';
 
-
---- DYNAMIC TABLE FRAUD FULL - ENRICHED DATASET ---
--- join transactions with clients and merchants
--- with scd logic applied and quick validation filter
-CREATE OR REPLACE DYNAMIC TABLE dt_fraud_full
--- downstream is the best option here as we depend on multiple upstream tables
+-- DYNAMIC TABLES INTERMEDIATE
+-- join transactions with merchants
+CREATE OR REPLACE DYNAMIC TABLE dt_trans_merch
   TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
@@ -335,58 +327,97 @@ SELECT
   t.amount,
   t.category,
   t.is_fraud,
+  t.validation_status,
 
-  -- client data (historical state at moment of transaction)
-  c.first_name,
-  c.last_name,
-  c.gender,
-  c.job,
-  c.city AS client_city,
-  c.state AS client_state,
-
-  -- merchant data (current merchant location)
+  -- all merchant data
   m.merchant,
   m.merchant_lat,
   m.merchant_long,
 
   t.meta_load_ts -- lineage: when the transaction was loaded
-
 FROM dt_transactions t
+LEFT JOIN dt_merchants m ON t.merchant = m.merchant;
 
--- join with merchants (left join as merchant data is not critical)
-LEFT JOIN dt_merchants m 
-  ON t.merchant = m.merchant
-  
--- join with clients (also left join to not lose transactions without clients, we can update later)
-LEFT JOIN dt_clients c 
-  ON t.card_num = c.card_num
 
+-- DYNAMIC TABLE WITH ALL CLIENT DATA
+CREATE OR REPLACE DYNAMIC TABLE dt_trans_all_clients
+  TARGET_LAG = 'DOWNSTREAM'
+  WAREHOUSE = dynamic_wh
+AS
+SELECT
+  -- transaction data
+  tm.trans_num,
+  tm.trans_ts,
+  tm.card_num,
+  tm.amount,
+  tm.category,
+  tm.is_fraud,
+  tm.validation_status,
+
+  -- all merchant data
+  tm.merchant,
+  tm.merchant_lat,
+  tm.merchant_long,
+
+  tm.meta_load_ts, -- lineage: when the transaction was loaded
+
+  -- all client data (no scd logic applied)
+  c.first_name,
+  c.last_name,
+  c.gender,
+  c.job,
+  c.city AS client_city,
+  c.state AS client_state
+FROM dt_trans_merch tm
+LEFT JOIN dt_clients_scd2 c ON tm.card_num = c.card_num;
+
+--- DYNAMIC TABLE FRAUD FULL
+-- final enriched dataset
+-- with scd logic applied and quick validation
+CREATE OR REPLACE DYNAMIC TABLE dt_fraud_full
+-- downstream is the best option here as we depend on multiple upstream tables
+  TARGET_LAG = 'DOWNSTREAM'
+  WAREHOUSE = dynamic_wh
+AS
+SELECT *
+FROM dt_trans_all_clients
+-- filter only valid transactions
+WHERE validation_status = 'VALID';
   -- scd type 2 logic:
   -- we chose the client record which was valid at the time of transaction
-  AND t.trans_ts >= c.valid_from 
-  AND (t.trans_ts < c.valid_to OR c.valid_to IS NULL)
+  AND trans_ts >= valid_from 
+  AND (trans_ts < valid_to OR valid_to IS NULL);
 
--- filter only valid transactions
-WHERE t.validation_status = 'VALID';
+
 
 
 -- quick check data landed
 SELECT COUNT(*) FROM dt_transactions;
 SELECT COUNT(*) FROM dt_merchants;
-SELECT COUNT(*) FROM dt_clients;
+SELECT COUNT(*) FROM dt_clients_deduped;
+SELECT COUNT(*) FROM dt_clients_scd2;
 SELECT COUNT(*) FROM dt_invalid_trans;
+SELECT COUNT(*) FROM dt_trans_merch;  
+SELECT COUNT(*) FROM dt_trans_all_clients;
 SELECT COUNT(*) FROM dt_fraud_full;
-SELECT COUNT(*) FROM dt_invalid_trans;
+
 
 SELECT * FROM dt_transactions
 ORDER BY meta_load_ts DESC LIMIT 10;
 SELECT * FROM dt_merchants
 ORDER BY meta_load_ts DESC LIMIT 10;
-SELECT * FROM dt_clients
+SELECT * FROM dt_clients_deduped
 ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_clients_scd2
+ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_invalid_trans
+ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_trans_merch
+ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_trans_all_clients
+ORDER BY meta_load_ts DESC LIMIT 10;  
 SELECT * FROM dt_fraud_full
 ORDER BY meta_load_ts DESC LIMIT 10;  
-
 
 
 -- check if tables are incremental or full refresh

@@ -12,6 +12,11 @@ GRANT USAGE ON WAREHOUSE dynamic_wh TO ROLE sysadmin;
 
 --- CONTEXT SETUP ---
 USE ROLE sysadmin;
+create warehouse if not exists dynamic_wh
+  warehouse_size = 'XSMALL'
+  auto_suspend = 60
+  auto_resume = TRUE
+  initially_suspended = TRUE;
 USE WAREHOUSE dynamic_wh;
 USE DATABASE POC_DB;
 CREATE SCHEMA IF NOT EXISTS POC_DB.POC2_DYNAMIC;
@@ -203,11 +208,8 @@ ORDER BY meta_load_ts DESC LIMIT 10;
 
 -- DYNAMIC TABLE TRANSACTIONS 
 -- cleaning types and basic validation
+USE ROLE sysadmin;
 CREATE OR REPLACE DYNAMIC TABLE dt_transactions
-
--- transactions data (a zwlaszcza fraud data) is time sensitive
--- duze koszty, warehouse musi byc wbudzany bardzo czesto (praktycznie ciagle)
--- ale jest to uzasadnione ze wzgledu na charakter danych (kontekst biznesowy)
   TARGET_LAG = '1 minute'
   WAREHOUSE = dynamic_wh
 AS
@@ -219,7 +221,7 @@ SELECT
   merchant_raw AS merchant,
   category_raw AS category,
   TRY_TO_BOOLEAN(is_fraud_raw) AS is_fraud,
-  meta_load_ts, -- zachowujemy metadane do pozniejszej analizy i debugowania
+  meta_load_ts,
 
   -- quick validation
   CASE 
@@ -235,12 +237,6 @@ FROM raw_trans;
 -- DYNAMIC TABLE MERCHANTS
 -- cleaning and SCD TYPE 1 logic implementation
 CREATE OR REPLACE DYNAMIC TABLE dt_merchants
-
--- merchant location data to bardziej dane statystyczne
--- but we need to have reasonably fresh data because of possible new merchants 
--- warehouse bedzie wybudzany troche czesciej, ale tabela merchantow jest raczej mala
--- wiec koszt nie wzrosnie znaczaco a spojnosc danych znacznie wzrosnie
--- TODO: zrobic TEST i porownac koszty z TARGET_LAG 15 min vs 1h
   TARGET_LAG = '15 minutes'
   WAREHOUSE = dynamic_wh
 AS
@@ -251,11 +247,7 @@ SELECT
   meta_load_ts
 
 FROM raw_merch
--- deduplikacja rekordow - SCD type 1
--- najpierw wybieramy najnowszy rekord dla danego merchant_raw i czasu wczytania
--- potem filtrujemy tylko ten rekord (qualify row_number = 1)
--- w ten sposob zawsze mamy najnowsze dane dla danego sprzedawcy
--- (ze wzgledu na charakter danych (tylko lokalizacja) nie stosujemy SCD type 2)
+-- deduplicate based on latest load timestamp and file row number (scd type 1)
 QUALIFY ROW_NUMBER() OVER (PARTITION BY merchant_raw ORDER BY meta_load_ts DESC, meta_file_row_number DESC) = 1;
 
 
@@ -263,12 +255,6 @@ QUALIFY ROW_NUMBER() OVER (PARTITION BY merchant_raw ORDER BY meta_load_ts DESC,
 -- DYNAMIC TABLE CLIENTS
 -- cleaning and SCD TYPE 2 logic implementation
 CREATE OR REPLACE DYNAMIC TABLE dt_clients
-
--- dane klientow moze nie zmieniaja sie az tak czesto
--- i wiekszy lag (kilka/nascie minut) nie bylby problemem
--- ALE istotne sa tu tez dane o nowych klientach
--- 5 minutowy lag is better for new client -> immediate transactions scenario
--- jest to kompromis pomiedzy kosztem a spojnoscia danych
   TARGET_LAG = '5 minutes'
   WAREHOUSE = dynamic_wh
 AS
@@ -284,30 +270,24 @@ WITH deduped_clients AS (
     city_raw AS city,
     state_raw AS state,
 
-  -- valid_from to czas wczytania rekordu
+  -- valid_from = time when this record was loaded
     meta_load_ts AS valid_from,
-    meta_load_ts -- zachowujemy tez oryginalna nazwe dla spojnosci zapytan kontrolnych
+    meta_load_ts -- i left meta_load_ts for next CTE usage and lineage
   FROM raw_clients
 
-  -- deduplikacja
-  -- najpierw wybieramy najnowszy rekord dla danego card_num i czasu wczytania
-  -- potem filtrujemy tylko ten rekord (qualify row_number = 1)
+  -- deduplicate based on card_num and load timestamp (to handle multiple loads in same timestamp)
   QUALIFY ROW_NUMBER() OVER (PARTITION BY card_num_raw, meta_load_ts ORDER BY meta_file_row_number DESC) = 1
 ),
 
 scd_clients AS (
   SELECT
     *,
-    -- funkcja okna lead(valid_from) pobiera date loadu nastepnego rekordu 
-    -- i ustawia ja jako date konca (valid_to) dla aktualnego rekordu
-    -- -> ciagla linai czasu, gdzie koniec jednego stanu jest poczatkiem nastepnego
-    -- dla najnowszego rekordu funkcja zwroci NULL, co oznacza, ze jest to aktualny rekord
-    -- dziala to TYLKO jesli para card_num i valid_from jest unikalna w tabeli
-    -- dlatego pracujemy na CTE deduped_clients
+    -- scd type 2 - valid_to = time when next record for same card_num was loaded
+    -- we need deduplication in case of multiple records for same card_num and same valid_from (load timestamp)
     LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) AS valid_to,
 
-    -- flaga is_current oznaczajaca czy rekord jest aktualny czy historyczny
+    -- is_current flag for easier filtering of current records
     CASE WHEN LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) IS NULL THEN TRUE 
       ELSE FALSE 
@@ -321,8 +301,6 @@ SELECT * FROM scd_clients;
 
 -- DYNAMIC TABLE - INVALID TRANSACTIONS
 -- to catch invalid transactions for further analysis
--- dynamic table fraud full bedzie miala tylko valid transactions
--- a nie chce calkowicie stracic informacji o invalid transactions
 CREATE OR REPLACE DYNAMIC TABLE dt_invalid_trans
   TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
@@ -341,19 +319,16 @@ FROM dt_transactions
 WHERE validation_status != 'VALID';
 
 
-
 --- DYNAMIC TABLE FRAUD FULL - ENRICHED DATASET ---
 -- join transactions with clients and merchants
 -- with scd logic applied and quick validation filter
 CREATE OR REPLACE DYNAMIC TABLE dt_fraud_full
-
--- downstream to najlepsza opcja dla tabeli koncowej
--- tabela odswieza sie zawsze wtedy, gdy odswieza sie KTORAKOLWIEK z tabel zrodlowych
+-- downstream is the best option here as we depend on multiple upstream tables
   TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
 SELECT
-  -- transaction Data
+  -- transaction data
   t.trans_num,
   t.trans_ts,
   t.card_num,
@@ -369,24 +344,25 @@ SELECT
   c.city AS client_city,
   c.state AS client_state,
 
-  -- merchant data)
+  -- merchant data (current merchant location)
   m.merchant,
   m.merchant_lat,
   m.merchant_long,
-  t.meta_load_ts -- lineage: kiedy transakcja wpadla do systemu
+
+  t.meta_load_ts -- lineage: when the transaction was loaded
 
 FROM dt_transactions t
 
--- join with merchants (left join, bo mozna miec transakcje u nieznanego sprzedawcy)
+-- join with merchants (left join as merchant data is not critical)
 LEFT JOIN dt_merchants m 
   ON t.merchant = m.merchant
   
--- join with clients
+-- join with clients (also left join to not lose transactions without clients, we can update later)
 LEFT JOIN dt_clients c 
   ON t.card_num = c.card_num
 
-  -- warunki point-in-time
-  -- wybieramy rekord klienta, ktory byl wazny w momencie transakcji 
+  -- scd type 2 logic:
+  -- we chose the client record which was valid at the time of transaction
   AND t.trans_ts >= c.valid_from 
   AND (t.trans_ts < c.valid_to OR c.valid_to IS NULL)
 
@@ -398,9 +374,9 @@ WHERE t.validation_status = 'VALID';
 SELECT COUNT(*) FROM dt_transactions;
 SELECT COUNT(*) FROM dt_merchants;
 SELECT COUNT(*) FROM dt_clients;
-SELECT COUNT(*) FROM dt_invalid_transactions;
+SELECT COUNT(*) FROM dt_invalid_trans;
 SELECT COUNT(*) FROM dt_fraud_full;
-SELECT COUNT(*) FROM dt_invalid_transactions;
+SELECT COUNT(*) FROM dt_invalid_trans;
 
 SELECT * FROM dt_transactions
 ORDER BY meta_load_ts DESC LIMIT 10;

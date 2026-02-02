@@ -1,8 +1,17 @@
 -- SNOWFLAKE: integration with S3 via snowpipe and serverless task
 
 --- CONTEXT SETUP ---
+USE ROLE accountadmin;
+CREATE WAREHOUSE IF NOT EXISTS poc_wh
+  WAREHOUSE_SIZE = 'XSMALL'
+  AUTO_SUSPEND = 60
+  AUTO_RESUME = TRUE
+  INITIALLY_SUSPENDED = TRUE;
+GRANT USAGE ON WAREHOUSE poc_wh TO ROLE sysadmin;
+
 USE ROLE sysadmin;
 USE WAREHOUSE poc_wh;
+CREATE DATABASE IF NOT EXISTS poc_db;
 USE DATABASE poc_db;
 CREATE SCHEMA IF NOT EXISTS poc_db.poc2_schema;
 USE SCHEMA poc2_schema;
@@ -114,16 +123,14 @@ USING (
     is_fraud,
     meta_filename
   FROM poc2_landing_stream
-  -- deduplikacja
-  -- najpierw szukamy najnowszych rekordow wg timestampu ladowania i numeru wiersza w pliku
-  -- potem filtrujemy tylko ten rekord (qualify row_number = 1)
+-- deduplicate based on latest load timestamp and file row number
   QUALIFY ROW_NUMBER() OVER (
     PARTITION BY trans_id 
     ORDER BY meta_load_ts DESC, meta_file_row_number DESC
   ) = 1
 ) AS source
 ON target.trans_id = source.trans_id
--- optymalizacja - aktualizuj tylko jesli dane faktycznie sie zmienily
+-- only when data has changed
 WHEN MATCHED AND (
   target.trans_ts IS DISTINCT FROM source.trans_ts OR
   target.category IS DISTINCT FROM source.category OR

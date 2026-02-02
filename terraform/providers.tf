@@ -24,8 +24,9 @@ provider "snowflake" {
   organization_name = var.snowflake_organization
   account_name      = var.snowflake_account
   user              = var.snowflake_user
-  token             = var.snowflake_pat
-  authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
+  authenticator     = "SNOWFLAKE_JWT"
+  private_key       = var.snowflake_private_key
+  private_key_passphrase = var.snowflake_private_key_passphrase
 }
 
 provider "snowflake" {
@@ -34,8 +35,9 @@ provider "snowflake" {
   organization_name = var.snowflake_organization
   account_name      = var.snowflake_account
   user              = var.snowflake_user
-  token             = var.snowflake_pat
-  authenticator     = "PROGRAMMATIC_ACCESS_TOKEN"
+  authenticator     = "SNOWFLAKE_JWT"
+  private_key       = var.snowflake_private_key
+  private_key_passphrase = var.snowflake_private_key_passphrase
 }
 
 provider "snowflake" {
@@ -44,7 +46,8 @@ provider "snowflake" {
   organization_name        = var.snowflake_organization
   account_name             = var.snowflake_account
   user                     = var.snowflake_user
-  token                    = var.snowflake_pat
-  authenticator            = "PROGRAMMATIC_ACCESS_TOKEN"
+  authenticator            = "SNOWFLAKE_JWT"
+  private_key              = var.snowflake_private_key
+  private_key_passphrase   = var.snowflake_private_key_passphrase
   preview_features_enabled = ["snowflake_alert_resource"]
 }

@@ -20,9 +20,16 @@ variable "snowflake_user" {
   type = string
 }
 
-variable "snowflake_pat" {
+variable "snowflake_private_key" {
   type      = string
   sensitive = true
+  default   = null
+}
+
+variable "snowflake_private_key_passphrase" {
+  type      = string
+  sensitive = true
+  default   = null
 }
 
 variable "warehouses" {

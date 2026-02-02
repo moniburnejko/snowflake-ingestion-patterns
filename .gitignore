@@ -52,7 +52,6 @@ profiles.yml
 
 # SQL 
 */local/*
-*/archive/*
 admin_setup.sql
 # temp files
 *.sql~

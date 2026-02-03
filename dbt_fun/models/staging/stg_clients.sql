@@ -9,7 +9,7 @@ typed as (
     first_name_raw as first_name,
     last_name_raw as last_name,
     gender_raw as gender,
-    try_to_date(date_birth_raw) as date_birth,
+    try_to_date(date_birth_raw, 'DD-MM-YYYY') as date_birth,
     job_raw as job,
     street_raw as street,
     city_raw as city,

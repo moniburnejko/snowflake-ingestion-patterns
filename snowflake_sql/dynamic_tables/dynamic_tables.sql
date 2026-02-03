@@ -369,16 +369,21 @@ WHERE t.validation_status = 'VALID';
 -- quick check data landed
 SELECT COUNT(*) FROM dt_transactions;
 SELECT COUNT(*) FROM dt_merchants;
-SELECT COUNT(*) FROM dt_clients;
+SELECT COUNT(*) FROM dt_clients_deduped;
+SELECT COUNT(*) FROM dt_clients_scd2;
 SELECT COUNT(*) FROM dt_invalid_trans;
 SELECT COUNT(*) FROM dt_fraud_full;
-SELECT COUNT(*) FROM dt_invalid_trans;
+
 
 SELECT * FROM dt_transactions
 ORDER BY meta_load_ts DESC LIMIT 10;
 SELECT * FROM dt_merchants
 ORDER BY meta_load_ts DESC LIMIT 10;
-SELECT * FROM dt_clients
+SELECT * FROM dt_clients_deduped
+ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_clients_scd2
+ORDER BY meta_load_ts DESC LIMIT 10;
+SELECT * FROM dt_invalid_trans
 ORDER BY meta_load_ts DESC LIMIT 10;
 SELECT * FROM dt_fraud_full
 ORDER BY meta_load_ts DESC LIMIT 10;  

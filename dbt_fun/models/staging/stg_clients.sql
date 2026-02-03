@@ -20,5 +20,4 @@ typed as (
   from source
 )
 
-select *
-from typed
+select * from typed

@@ -6,7 +6,6 @@
     updated_at='meta_load_ts'
 ) }}
 
-select *
-from {{ ref('int_clients_deduped') }}
+select * from {{ ref('int_clients_deduped') }}
 
 {% endsnapshot %}

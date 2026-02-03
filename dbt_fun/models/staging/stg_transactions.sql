@@ -33,5 +33,4 @@ validated as (
   from typed
 )
 
-select *
-from validated
+select * from validated

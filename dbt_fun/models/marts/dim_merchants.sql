@@ -23,7 +23,6 @@ where t.merchant is null
 
 {% else %}
 
-select *
-from latest
+select * from latest
 
 {% endif %}

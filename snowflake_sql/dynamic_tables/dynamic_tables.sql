@@ -205,7 +205,7 @@ ORDER BY meta_load_ts DESC LIMIT 10;
 -- cleaning types and basic validation
 USE ROLE sysadmin;
 CREATE OR REPLACE DYNAMIC TABLE dt_transactions
-  TARGET_LAG = '1 minute'
+  TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
 SELECT
@@ -237,7 +237,7 @@ FROM raw_trans;
 -- DYNAMIC TABLE MERCHANTS
 -- cleaning and SCD TYPE 1 logic implementation
 CREATE OR REPLACE DYNAMIC TABLE dt_merchants
-  TARGET_LAG = '5 minutes'
+  TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
 SELECT
@@ -255,7 +255,7 @@ QUALIFY ROW_NUMBER() OVER (PARTITION BY merchant_raw ORDER BY meta_load_ts DESC,
 -- DYNAMIC TABLE CLIENTS
 -- cleaning and SCD TYPE 2 logic implementation
 CREATE OR REPLACE DYNAMIC TABLE dt_clients
-  TARGET_LAG = '5 minutes'
+  TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
 WITH deduped_clients AS (
@@ -324,7 +324,7 @@ WHERE validation_status != 'VALID';
 -- with scd logic applied and quick validation filter
 CREATE OR REPLACE DYNAMIC TABLE dt_fraud_full
 -- downstream is the best option here as we depend on multiple upstream tables
-  TARGET_LAG = 'DOWNSTREAM'
+  TARGET_LAG = '10 minutes'
   WAREHOUSE = dynamic_wh
 AS
 SELECT

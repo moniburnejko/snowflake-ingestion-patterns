@@ -23,7 +23,6 @@ variable "snowflake_user" {
 variable "snowflake_private_key" {
   type      = string
   sensitive = true
-  default   = null
 }
 
 variable "snowflake_private_key_passphrase" {

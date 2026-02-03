@@ -1,6 +1,19 @@
 # RBAC
 # TODO: try modules for roles and grants!!
 
+# INFRASTRUCTURE
+resource "snowflake_database" "db" {
+  provider = snowflake.sys
+  name     = var.database
+}
+
+resource "snowflake_schema" "schemas" {
+  provider = snowflake.sys
+  for_each = toset(var.schemas)
+  database = snowflake_database.db.name
+  name     = each.value
+}
+
 # CREATE CUSTOM ROLES 
 # create all roles defined in variable custom_role
 resource "snowflake_account_role" "roles" {
@@ -90,7 +103,7 @@ resource "snowflake_grant_privileges_to_account_role" "database_usage" {
   privileges        = ["USAGE"]
   on_account_object {
     object_type = "DATABASE"
-    object_name = var.database
+    object_name = snowflake_database.db.name
   }
 }
 
@@ -100,7 +113,7 @@ resource "snowflake_grant_privileges_to_account_role" "dbtadmin_database_create_
   privileges        = ["CREATE SCHEMA"]
   on_account_object {
     object_type = "DATABASE"
-    object_name = var.database
+    object_name = snowflake_database.db.name
   }
 }
 
@@ -110,7 +123,7 @@ resource "snowflake_grant_privileges_to_account_role" "schema_usage" {
   account_role_name = snowflake_account_role.roles[each.value.role].name
   privileges        = ["USAGE"]
   on_schema {
-    schema_name = "\"${var.database}\".\"${each.value.schema}\""
+    schema_name = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
   }
 }
 
@@ -123,7 +136,7 @@ resource "snowflake_grant_privileges_to_account_role" "schema_creation" {
   account_role_name = snowflake_account_role.roles[each.value.role].name
   privileges        = local.schema_creation_map[each.value.role]
   on_schema {
-    schema_name = "\"${var.database}\".\"${each.value.schema}\""
+    schema_name = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
   }
 }
 
@@ -138,7 +151,7 @@ resource "snowflake_grant_privileges_to_account_role" "pipeadmin_objects_future"
   on_schema_object {
     future {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -153,7 +166,7 @@ resource "snowflake_grant_privileges_to_account_role" "pipeadmin_objects_all" {
   on_schema_object {
     all {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -169,7 +182,7 @@ resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_future
   on_schema_object {
     future {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -184,7 +197,7 @@ resource "snowflake_grant_privileges_to_account_role" "alertadmin_objects_all" {
   on_schema_object {
     all {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -207,7 +220,7 @@ resource "snowflake_grant_privileges_to_account_role" "taskadmin_objects_future"
   on_schema_object {
     future {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -222,7 +235,7 @@ resource "snowflake_grant_privileges_to_account_role" "taskadmin_objects_all" {
   on_schema_object {
     all {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -238,7 +251,7 @@ resource "snowflake_grant_privileges_to_account_role" "dbtadmin_objects_future" 
   on_schema_object {
     future {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -253,7 +266,7 @@ resource "snowflake_grant_privileges_to_account_role" "dbtadmin_objects_all" {
   on_schema_object {
     all {
       object_type_plural = each.value.type
-      in_schema          = "\"${var.database}\".\"${each.value.schema}\""
+      in_schema          = "\"${snowflake_database.db.name}\".\"${snowflake_schema.schemas[each.value.schema].name}\""
     }
   }
 }
@@ -272,6 +285,6 @@ resource "snowflake_grant_privileges_to_account_role" "alertadmin_db_monitor" {
   privileges        = ["MONITOR"]
   on_account_object {
     object_type = "DATABASE"
-    object_name = var.database
+    object_name = snowflake_database.db.name
   }
 }

@@ -251,57 +251,53 @@ FROM raw_merch
 QUALIFY ROW_NUMBER() OVER (PARTITION BY merchant_raw ORDER BY meta_load_ts DESC, meta_file_row_number DESC) = 1;
 
 
+--- DYNAMIC TABLES CLIENTS
+-- DT_CLIENT_DEDUPED - deduplication based on load timestamp and file row number
+CREATE OR REPLACE DYNAMIC TABLE dt_clients_deduped
+  TARGET_LAG = '1 minute'
+  WAREHOUSE = dynamic_wh
+AS
+SELECT
+  card_num_raw AS card_num,
+  first_name_raw AS first_name,
+  last_name_raw AS last_name,
+  gender_raw AS gender,
+  TRY_TO_DATE(date_birth_raw, 'DD-MM-YYYY') AS date_birth,
+  job_raw AS job,
+  street_raw AS street,
+  city_raw AS city,
+  state_raw AS state,
+  -- valid_from = time when this record was loaded
+  meta_load_ts AS valid_from,
+  meta_load_ts -- i left meta_load_ts for lineage
+FROM raw_clients
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY card_num_raw, meta_load_ts ORDER BY meta_file_row_number DESC) = 1;
 
--- DYNAMIC TABLE CLIENTS
--- cleaning and SCD TYPE 2 logic implementation
-CREATE OR REPLACE DYNAMIC TABLE dt_clients
+-- DT_CLIENTS_SCD2 - SCD TYPE 2 implementation
+CREATE OR REPLACE DYNAMIC TABLE dt_clients_scd2
   TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
-WITH deduped_clients AS (
-  SELECT
-    card_num_raw AS card_num,
-    first_name_raw AS first_name,
-    last_name_raw AS last_name,
-    gender_raw AS gender,
-    TRY_TO_DATE(date_birth_raw) AS date_birth,
-    job_raw AS job,
-    street_raw AS street,
-    city_raw AS city,
-    state_raw AS state,
-
-  -- valid_from = time when this record was loaded
-    meta_load_ts AS valid_from,
-    meta_load_ts -- i left meta_load_ts for next CTE usage and lineage
-  FROM raw_clients
-
-  -- deduplicate based on card_num and load timestamp (to handle multiple loads in same timestamp)
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY card_num_raw, meta_load_ts ORDER BY meta_file_row_number DESC) = 1
-),
-
-scd_clients AS (
   SELECT
     *,
     -- scd type 2 - valid_to = time when next record for same card_num was loaded
     -- we need deduplication in case of multiple records for same card_num and same valid_from (load timestamp)
     LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) AS valid_to,
-
     -- is_current flag for easier filtering of current records
     CASE WHEN LEAD(valid_from) OVER (
       PARTITION BY card_num ORDER BY valid_from) IS NULL THEN TRUE 
       ELSE FALSE 
     END AS is_current
-
-  FROM deduped_clients
-)
-SELECT * FROM scd_clients;
+  FROM dt_clients_deduped;
 
 
 
 -- DYNAMIC TABLE - INVALID TRANSACTIONS
--- to catch invalid transactions for further analysis
 CREATE OR REPLACE DYNAMIC TABLE dt_invalid_trans
+-- to tabela koncowa, nie jest zalezna od zadnej nastepnej, wiec nie odswieza sie automatycznie
+-- zmieni sie to przy stworzeniu nastepnej tabeli zaleznej np do analizy  
   TARGET_LAG = 'DOWNSTREAM'
   WAREHOUSE = dynamic_wh
 AS
@@ -324,7 +320,7 @@ WHERE validation_status != 'VALID';
 -- with scd logic applied and quick validation filter
 CREATE OR REPLACE DYNAMIC TABLE dt_fraud_full
 -- downstream is the best option here as we depend on multiple upstream tables
-  TARGET_LAG = '10 minutes'
+  TARGET_LAG = '5 minutes' // or 1 minute
   WAREHOUSE = dynamic_wh
 AS
 SELECT
@@ -358,7 +354,7 @@ LEFT JOIN dt_merchants m
   ON t.merchant = m.merchant
   
 -- join with clients (also left join to not lose transactions without clients, we can update later)
-LEFT JOIN dt_clients c 
+LEFT JOIN dt_clients_scd2 c 
   ON t.card_num = c.card_num
 
   -- scd type 2 logic:
@@ -391,7 +387,6 @@ ORDER BY meta_load_ts DESC LIMIT 10;
 
 -- check if tables are incremental or full refresh
 USE ROLE accountadmin;
-ALTER SESSION SET TIMEZONE = 'Europe/Warsaw';
 SHOW DYNAMIC TABLES;
 
 SELECT
